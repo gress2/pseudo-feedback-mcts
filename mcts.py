@@ -1,3 +1,6 @@
+import math
+import random
+
 class Node():
     def __init__(self, action, env):
         self._parent = None
@@ -31,15 +34,20 @@ class Node():
     def children(self):
         return self._children
 
+    @property
+    def reward(self)
+        return self._env.total_reward
+
     def expand(self):
         if self._has_children():
             print('Tried to expand a node which was already expanded')
-            return
+            return False
         actions = list(self._env.get_possible_moves().keys())
         for action in actions:
             env = copy.deepcopy(self._env)
             env.step(action)
             self._children.append(env)
+        return len(action) > 0
 
     def has_children(self):
         return len(self._children)
@@ -70,16 +78,33 @@ class MCTS():
         return choice
 
     def default_policy(self, node):
-        pass
+        cur = node
+        while cur.expand():
+            cur = random.choice(cur.children)
+        cur.children.clear()
+        return cur.reward
 
     def best_child(self, node): 
+        N = node.n
         children = node.children
         max_score = float('-inf') 
         best = list()
+        for child in children:
+            n = child.n
+            q = child.q
+            UCB1 = q/n + math.sqrt(2) * math.sqrt(math.log(N) / n) 
+            if UCB1 > max_score:
+                max_score = UCB1
+                best = [child]
+            elif UCB1 == max_score:
+                best.append(child)
+        return random.choice(best)
 
-        for
-        
-        pass
+    def backprop(self, node, q):
+        while node.parent is not None:
+            node.q += q
+            node.n += 1
+            node = node.parent
 
     @property
     def ranked_list(self):
