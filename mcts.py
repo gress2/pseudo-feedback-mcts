@@ -1,11 +1,12 @@
 import copy
 import math
 import random
+import sys
 
 class Node():
     def __init__(self, action, env):
-        self._parent = None
         self._children = list()
+        self._parent = None
         self._action = action
         self._terminal = False
         self._env = env
@@ -33,10 +34,6 @@ class Node():
         self._n = value
 
     @property
-    def parent(self):
-        return self._parent
-
-    @property
     def children(self):
         return self._children
 
@@ -48,22 +45,26 @@ class Node():
     def terminal(self):
         return self._terminal
 
-    def expand(self):
-        if self.has_children():
-            print('Tried to expand a node which was already expanded')
-            return False
-        actions = list(self._env.get_possible_moves().keys())
-        if len(actions) == 0:
-            self._terminal = True
-            return False
-        for action in actions:
-            env = copy.deepcopy(self._env)
-            env.step(action)
-            child = Node(action, env)
-            child._parent = self 
-            self._children.append(child)
-        return True
+    @terminal.setter
+    def terminal(self, value):
+        self._terminal = value
 
+    @property
+    def parent(self):
+        return self._parent
+
+    @parent.setter
+    def parent(self, value):
+        self._parent = value
+
+    @property
+    def action(self):
+        return self._action
+
+    @property
+    def env(self):
+        return self._env
+    
     def has_children(self):
         return len(self._children)
 
@@ -79,10 +80,11 @@ class MCTS():
             random.seed(random_seed)
         else:
             random.seed()
-        self._root = Node(None, env) 
+        self._root = Node("", env) 
         self._root.n = 1
         self._curr = self._root
         self._ranked_list = None
+        self.num_nodes = 0
 
     def reset(self):
         self._root.reset()
@@ -92,19 +94,35 @@ class MCTS():
         choice = node
         while choice.has_children():
             choice = self.best_child(choice)
-        if choice.expand():
-            return self.best_child(choice)
+        if self.expand(choice):
+            return random.choice(node.children)
         return choice
 
-    def default_policy(self, node):
-        cur = node
-        while not cur.terminal and cur.expand():
-            cur = random.choice(cur.children)
-        reward = cur.reward
-        print('found playout with reward: ' + str(reward))
-        node.children.clear()
-        return reward
+    def expand(self, node):
+        if node.has_children():
+            print('Tried to expand a node which was already expanded')
+            return False
+        actions = list(node.env.get_possible_moves().keys())
+        if len(actions) == 0:
+            node.terminal = True
+            return False
+        for action in actions:
+            env = type(node.env).from_env(node.env)
+            env.step(action)
+            child = Node(action, env)
+            child.parent = node
+            node.children.append(child)
+        self.num_nodes += len(actions)
+        return True
 
+    def default_policy(self, node):
+        env = type(node.env).from_env(node.env)
+        while not env.is_game_over():
+            possible_actions = list(env.get_possible_moves().keys())
+            action = random.choice(possible_actions)
+            env.step(action)
+        return env.total_reward
+        
     def best_child(self, node): 
         N = node.n
         children = node.children
@@ -127,19 +145,23 @@ class MCTS():
 
     def search(self, iterations):
         while not self._curr.terminal:
-            self._curr._env.render()
+            self._curr.env.render()
             for _ in range(iterations):
                 leaf = self.tree_policy(self._curr)
                 reward = self.default_policy(leaf)
                 self.backprop(leaf, reward)
             self._curr = self.best_child(self._curr)
+            print('Num nodes: ' + str(self.num_nodes))
+            print('Move made: ' + str(self._curr.action))
+        self._curr.env.render()
         return self._curr.reward
 
     def backprop(self, node, q):
-        while node.parent is not None:
-            node.q += q
-            node.n += 1
-            node = node.parent
+        tmp = node
+        while tmp.parent is not None:
+            tmp.q += q
+            tmp.n += 1
+            tmp = tmp.parent
 
     @property
     def ranked_list(self):

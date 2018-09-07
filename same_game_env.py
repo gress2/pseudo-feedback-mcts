@@ -1,3 +1,4 @@
+import copy
 from enum import Enum
 import gym
 from gym import spaces
@@ -13,16 +14,23 @@ class Colors(Enum):
     PURPLE = '95'
 
 class Env(gym.Env):
-    def __init__(self, random_seed = 420):
+    def __init__(self, board = None, reward = 0, random_seed = 32):
         self.width = 15
         self.height = 15
         self.num_colors = len(Colors)
         self.action_space = spaces.Tuple((spaces.Discrete(self.width), spaces.Discrete(self.height)))
-        self.board = [["0" for x in range(self.height)] for y in range(self.height)]
-        self._randomize_board(random_seed)
-        self._total_reward = 0
+        if board is None:
+            self.board = [["0" for x in range(self.height)] for y in range(self.height)]
+            self._randomize_board(random_seed)
+        else:
+            self.board = board
+        self._total_reward = reward
         self.possible_moves = self.get_possible_moves()
-        random.seed()
+
+    @classmethod
+    def from_env(self, instance):
+        board = copy.deepcopy(instance.board)
+        return Env(board, instance.total_reward)
 
     @property
     def total_reward(self):
@@ -52,7 +60,7 @@ class Env(gym.Env):
     def _is_board_empty(self):
         return all([all(elem == "0" for elem in col) for col in self.board])
 
-    def _is_game_over(self):
+    def is_game_over(self):
         for x in range(self.width):
             for y in range(self.height):
                 color = self.board[x][y]
@@ -67,12 +75,12 @@ class Env(gym.Env):
         return True
 
     def _aggregate(self, key, adj_dict):
-        l = list()
+        s = set()
         if key in adj_dict:
             for elem in adj_dict[key]:
-                l.append(elem)
-                l += self._aggregate(elem, adj_dict)
-        return l
+                s.add(elem)
+                s = s.union(self._aggregate(elem, adj_dict))
+        return s
 
     def get_possible_moves(self):
         adj_dict = dict()
@@ -95,7 +103,7 @@ class Env(gym.Env):
         covered = set()
         for key in adj_dict:
             if key not in covered:
-                moves[key] = self._aggregate(key, adj_dict)
+                moves[key] = list(self._aggregate(key, adj_dict))
                 for elem in moves[key]:
                     covered.add(elem)
         return moves
@@ -122,7 +130,7 @@ class Env(gym.Env):
         num_removed = self.make_move(action)
         reward = (num_removed - 2)**2
         self._collapse()
-        is_game_over = self._is_game_over()
+        is_game_over = self.is_game_over()
         if is_game_over:
             if self._is_board_empty():
                 reward += 1000
