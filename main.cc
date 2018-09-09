@@ -3,6 +3,6 @@
 
 int main() {
   same_game_env env;
-  env.render();
-  MCTS<same_game_env> mcts(&env);
+  MCTS<same_game_env> mcts(env);
+  mcts.search(10);
 }
