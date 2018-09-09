@@ -8,6 +8,8 @@
 #include <utility>
 #include <utility>
 
+static std::size_t node_id = 0;
+
 template <class Env>
 class node {
   public:
@@ -22,9 +24,12 @@ class node {
     Env env_;
     double q_;
     int n_;
+    int depth_;
+    std::size_t node_id_;
   public:
     node(position_type action, Env env, parent_type parent)
-      : action_(action), env_(env), parent_(parent), is_terminal_(false)
+      : action_(action), env_(env), parent_(parent), is_terminal_(false),
+        q_(0), n_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++)
     {}
 
     int expand() {
@@ -89,6 +94,14 @@ class node {
     position_type get_action() const {
       return action_;
     }
+
+    int get_depth() const {
+      return depth_;
+    }
+
+    std::size_t get_id() const {
+      return node_id_;
+    }
 };
 
 template <class Env>
@@ -99,13 +112,15 @@ class MCTS {
   private:
     node_type root_;
     node_type* cur_;
-    int num_nodes_;
+    std::size_t num_nodes_;
   public:
     MCTS(Env env) 
       : root_(node<Env>{std::make_pair(-1, -1), env, nullptr}),
         cur_(&root_),
         num_nodes_(0)
-    {}
+    {
+      // srand(time(NULL)); 
+    }
 
     node_type* best_child(node_type* parent) {
       int N = parent->get_n();
@@ -116,15 +131,16 @@ class MCTS {
       for (auto& child : children) {
         sum_q_children += child.get_q();
       }
-      double avg_q = sum_q_children / children.size();
+      double avg_q = sum_q_children / N;
       for (auto& child : children) {
         int n = child.get_n();
         double UCB1 = 0;
         if (n == 0) {
           UCB1 = std::numeric_limits<double>::infinity();
+        } else {
+          double q = child.get_q();
+          UCB1 = q / n + avg_q * std::sqrt(std::log(N) / n);
         }
-        double q = child.get_q();
-        UCB1 = q / n + avg_q * std::sqrt(std::log(N) / n);
         if (UCB1 > max_score) {
           max_score = UCB1;
           best.clear();
@@ -133,8 +149,6 @@ class MCTS {
           best.push_back(&child);
         }
       }
-      std::cout << children.size() << std::endl;
-      std::cout << "best_size: " << best.size() << std::endl;
       return best[std::rand() % best.size()];
     }
 
@@ -142,24 +156,27 @@ class MCTS {
       while (cur->has_children()) {
         cur = best_child(cur);
       }
+
+      if (cur->get_n() == 0) {
+        return cur;
+      }
+
       int num_children_added = cur->expand();
       num_nodes_ += num_children_added;
-
-      int rand_child_idx = std::rand() % num_children_added;
-
       if (num_children_added) {
+        int rand_child_idx = std::rand() % num_children_added;
         return &(cur->get_children()[rand_child_idx]);
+      } else {
+        return cur;
       }
     }
 
     double default_policy(node_type* cur) {
       Env env(cur->get_env());
       while (!env.is_game_over()) {
-        env.render();
         std::vector<position_type> moves = env.get_possible_moves();
         int rand_move_idx = std::rand() % moves.size();
         position_type pos = moves[rand_move_idx];
-        std::cout << pos.first << " " << pos.second << std::endl;
         env.step(pos);
       }
       return env.get_total_reward();
@@ -177,14 +194,13 @@ class MCTS {
       while (!cur_->is_terminal()) {
         cur_->get_env().render();
         for (int i = 0; i < iterations; i++) {
-          std::cout << "A" << std::endl;
           node_type* leaf = tree_policy(cur_);
-          std::cout << "B" << std::endl;
           double reward = default_policy(leaf);
-          std::cout << "C" << std::endl;
           backprop(leaf, reward);
         }
         cur_ = best_child(cur_);
+        std::cout << "move made: (" << cur_->get_action().first << ", " << cur_->get_action().second << ")" << std::endl;
+        std::cout << "# nodes: " << num_nodes_ << std::endl;
       }
       cur_->get_env().render();
       return cur_->get_reward();
