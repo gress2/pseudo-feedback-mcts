@@ -4,9 +4,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <sstream>
+#include <utility>
 #include <vector>
-#include <utility>
-#include <utility>
 
 static std::size_t node_id = 0;
 
@@ -32,6 +32,17 @@ class node {
         q_(0), n_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++)
     {}
 
+    std::string to_gv() const {
+      std::stringstream ss;
+      ss << "  " << node_id_ << " [label=\"(" << action_.first << ", " 
+        << action_.second << ")\n n: " << n_ << " q: " << q_ << ")\"]" << std::endl;
+      for (auto& child : children_) {
+        ss << "  " << node_id_ << " -- " << child.node_id_ << std::endl;
+        ss << child.to_gv() << std::endl;
+      } 
+      return ss.str();
+    }
+
     int expand() {
       if (this->has_children()) {
         std::cerr << "Tried to expand a node which was already expanded" << std::endl;
@@ -48,7 +59,7 @@ class node {
         node<Env> child(action, env, this);
         children_.push_back(child);
       }
-      return actions.size();
+      return children_.size();
     }
 
     Env& get_env() {
@@ -119,7 +130,15 @@ class MCTS {
         cur_(&root_),
         num_nodes_(0)
     {
-      // srand(time(NULL)); 
+      srand(time(NULL)); 
+    }
+
+    std::string to_gv() const {
+      std::stringstream ss;
+      ss << "graph {" << std::endl;
+      ss << root_.to_gv();
+      ss << "}" << std::endl;
+      return ss.str();
     }
 
     node_type* best_child(node_type* parent) {
@@ -139,7 +158,7 @@ class MCTS {
           UCB1 = std::numeric_limits<double>::infinity();
         } else {
           double q = child.get_q();
-          UCB1 = q / n + avg_q * std::sqrt(std::log(N) / n);
+          UCB1 = q / n + std::sqrt(2) * std::sqrt(std::log(N) / n);
         }
         if (UCB1 > max_score) {
           max_score = UCB1;
@@ -179,7 +198,11 @@ class MCTS {
         position_type pos = moves[rand_move_idx];
         env.step(pos);
       }
-      return env.get_total_reward();
+      if (env.get_total_reward() > -900) {
+        return 1;
+      } else {
+        return 0;
+      }
     }
 
     void backprop(node_type* cur, double q) {
@@ -199,7 +222,8 @@ class MCTS {
           backprop(leaf, reward);
         }
         cur_ = best_child(cur_);
-        std::cout << "move made: (" << cur_->get_action().first << ", " << cur_->get_action().second << ")" << std::endl;
+        std::cout << "move made: (" << cur_->get_action().first << ", " 
+          << cur_->get_action().second << ")" << std::endl;
         std::cout << "# nodes: " << num_nodes_ << std::endl;
       }
       cur_->get_env().render();
