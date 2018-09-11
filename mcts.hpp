@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -7,6 +8,7 @@
 #include <sstream>
 #include <utility>
 #include <vector>
+
 
 static std::size_t node_id = 0;
 
@@ -20,8 +22,10 @@ class node {
     parent_type parent_;
     children_type children_;
     position_type action_;
-    bool is_terminal_;
     Env env_;
+    std::vector<position_type> moves_;
+    bool moves_found_;
+    bool is_terminal_;
     double q_;
     int n_;
     int depth_;
@@ -29,7 +33,8 @@ class node {
   public:
     node(position_type action, Env env, parent_type parent)
       : action_(action), env_(env), parent_(parent), is_terminal_(false),
-        q_(0), n_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++)
+        q_(0), n_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++),
+        moves_({}), moves_found_(false)
     {}
 
     std::string to_gv() const {
@@ -43,23 +48,28 @@ class node {
       return ss.str();
     }
 
-    int expand() {
-      if (this->has_children()) {
-        std::cerr << "Tried to expand a node which was already expanded" << std::endl;
-        return 0;
+    node<Env>* expand() {
+      if (!moves_found_) {
+        moves_ = env_.get_possible_moves();
+        moves_found_ = true;
+      } 
+
+      if (moves_.empty()) {
+        if (children_.empty()) {
+          is_terminal_ = true;
+          return nullptr;
+        } else {
+          return nullptr; 
+        }
       }
-      std::vector<position_type> actions = env_.get_possible_moves();
-      if (!actions.size()) {
-        is_terminal_ = true;
-        return 0;
-      }
-      for (auto& action : actions) {
-        Env env(env_);
-        env.step(action);
-        node<Env> child(action, env, this);
-        children_.push_back(child);
-      }
-      return children_.size();
+
+      auto move = moves_.back();
+      moves_.pop_back();
+      Env env(env_);
+      env.step(move);
+      node<Env> child(move, env, this);
+      children_.push_back(child);
+      return &(children_.back());
     }
 
     Env& get_env() {
@@ -133,6 +143,12 @@ class MCTS {
       srand(time(NULL)); 
     }
 
+    void make_move(node_type* move) {
+      root_ = node_type(move->get_action(), move->get_env(), nullptr);
+      cur_ = &root_; 
+      num_nodes_ = 0;
+    }
+
     std::string to_gv() const {
       std::stringstream ss;
       ss << "graph {" << std::endl;
@@ -141,30 +157,26 @@ class MCTS {
       return ss.str();
     }
 
+    double UCB1(node_type* cur) {
+      int n = cur->get_n();
+      if (n == 0) {
+        return std::numeric_limits<double>::infinity(); 
+      }
+      return cur->get_q() / n + 
+        .5 * std::sqrt(std::log(cur->get_parent()->get_n()) / n);
+    }
+
     node_type* best_child(node_type* parent) {
-      int N = parent->get_n();
       auto& children = parent->get_children();
       double max_score = -std::numeric_limits<double>::infinity();
       std::vector<node_type*> best;
-      double sum_q_children = 0;
       for (auto& child : children) {
-        sum_q_children += child.get_q();
-      }
-      double avg_q = sum_q_children / N;
-      for (auto& child : children) {
-        int n = child.get_n();
-        double UCB1 = 0;
-        if (n == 0) {
-          UCB1 = std::numeric_limits<double>::infinity();
-        } else {
-          double q = child.get_q();
-          UCB1 = q / n + std::sqrt(2) * std::sqrt(std::log(N) / n);
-        }
-        if (UCB1 > max_score) {
-          max_score = UCB1;
+        double ucb1 = UCB1(&child);
+        if (ucb1 > max_score) {
+          max_score = ucb1;
           best.clear();
           best.push_back(&child);
-        } else if (UCB1 == max_score) {
+        } else if (ucb1 == max_score) {
           best.push_back(&child);
         }
       }
@@ -172,22 +184,17 @@ class MCTS {
     }
 
     node_type* tree_policy(node_type* cur) {
-      while (cur->has_children()) {
-        cur = best_child(cur);
+      while (!cur->is_terminal()) {
+        node_type* exp = cur->expand();
+        if (exp) {
+          num_nodes_++;
+          return exp;
+        }
+        if (cur->has_children()) {
+          cur = best_child(cur);
+        }
       }
-
-      if (cur->get_n() == 0) {
-        return cur;
-      }
-
-      int num_children_added = cur->expand();
-      num_nodes_ += num_children_added;
-      if (num_children_added) {
-        int rand_child_idx = std::rand() % num_children_added;
-        return &(cur->get_children()[rand_child_idx]);
-      } else {
-        return cur;
-      }
+      return cur;
     }
 
     double default_policy(node_type* cur) {
@@ -198,11 +205,7 @@ class MCTS {
         position_type pos = moves[rand_move_idx];
         env.step(pos);
       }
-      if (env.get_total_reward() > -900) {
-        return 1;
-      } else {
-        return 0;
-      }
+      return env.get_total_reward();
     }
 
     void backprop(node_type* cur, double q) {
@@ -214,19 +217,33 @@ class MCTS {
     }
 
     double search(int iterations) {
+      std::size_t num_iterations = 1e6;
       while (!cur_->is_terminal()) {
+        std::chrono::time_point<std::chrono::steady_clock> start = 
+          std::chrono::steady_clock::now();
+
         cur_->get_env().render();
-        for (int i = 0; i < iterations; i++) {
+
+        for (std::size_t i = 0; i < num_iterations; i++) {
           node_type* leaf = tree_policy(cur_);
           double reward = default_policy(leaf);
           backprop(leaf, reward);
         }
-        cur_ = best_child(cur_);
-        std::cout << "move made: (" << cur_->get_action().first << ", " 
-          << cur_->get_action().second << ")" << std::endl;
-        std::cout << "# nodes: " << num_nodes_ << std::endl;
+                
+        std::size_t num_nodes_created = num_nodes_;
+
+        if (cur_->has_children()) {
+          make_move(best_child(cur_));
+          std::cout << "move made: (" << cur_->get_action().first << ", " 
+            << cur_->get_action().second << ")" << std::endl;
+        }
+
+        std::chrono::time_point<std::chrono::steady_clock> end = 
+          std::chrono::steady_clock::now();
+        std::chrono::seconds diff = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+        std::cout << "move took: " << diff.count() << "s" << std::endl;
+        std::cout << "created " << num_nodes_created << " nodes in " << num_iterations << " iterations" << std::endl;
       }
-      cur_->get_env().render();
       return cur_->get_reward();
     }
 };

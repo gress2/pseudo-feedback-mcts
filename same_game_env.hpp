@@ -24,7 +24,7 @@ class same_game_env {
     using position_type = std::pair<short, short>;
     using move_to_adj_map = std::unordered_map<position_type, std::vector<position_type>, pair_hash>;
   private:
-    const int num_colors_ = 5;
+    int num_colors_ = 5;
     int total_reward_ = 0;
     board_type board_;
     move_to_adj_map moves_and_connected_ = {};
