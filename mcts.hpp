@@ -217,7 +217,7 @@ class MCTS {
     }
 
     double search(int iterations) {
-      std::size_t num_iterations = 1e6;
+      std::size_t num_iterations = 1e2;
       while (!cur_->is_terminal()) {
         std::chrono::time_point<std::chrono::steady_clock> start = 
           std::chrono::steady_clock::now();

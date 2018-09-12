@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -22,18 +23,19 @@ class same_game_env {
   public:
     using board_type = std::vector<std::vector<short>>;
     using position_type = std::pair<short, short>;
-    using move_to_adj_map = std::unordered_map<position_type, std::vector<position_type>, pair_hash>;
+    using move_to_adj_map = std::map<position_type, std::vector<position_type>>;
   private:
     int num_colors_ = 5;
     int total_reward_ = 0;
     board_type board_;
     move_to_adj_map moves_and_connected_ = {};
+    int width = 7;
   public:
     same_game_env(int random_seed = 32) {
       std::srand(random_seed);
-      for (int x = 0; x < 15; x++) {
+      for (int x = 0; x < width; x++) {
         board_.push_back({});
-        for (int y = 0; y < 15; y++) {
+        for (int y = 0; y < width; y++) {
           board_[x].push_back((std::rand() % 5) + 1);
         }
       }
@@ -51,9 +53,9 @@ class same_game_env {
       
     void render() {
       std::cout << "*********************************" << std::endl;
-      for (int y = 14; y >= 0; y--) {
+      for (int y = width - 1; y >= 0; y--) {
         std::cout << "| ";
-        for (int x = 0; x < 15; x++) {
+        for (int x = 0; x < width; x++) {
           short tile = board_[x][y];
           std::cout << "\033[9" << tile << "m" << tile << "\033[0m ";
         }
@@ -63,16 +65,16 @@ class same_game_env {
     }
 
     bool is_game_over() const {
-      for (int x = 0; x < 15; x++) {
-        for (int y = 0; y < 15; y++) {
+      for (int x = 0; x < width; x++) {
+        for (int y = 0; y < width; y++) {
           short tile = board_[x][y];
           if (tile == 0) {
             break;
           }
-          if (y + 1 < 15 && board_[x][y+1] == tile) {
+          if (y + 1 < width && board_[x][y+1] == tile) {
             return false;
           }
-          if (x + 1 < 15 && board_[x+1][y] == tile) {
+          if (x + 1 < width && board_[x+1][y] == tile) {
             return false;
           }
         }
@@ -104,43 +106,65 @@ class same_game_env {
       return connected;
     }
 
+    std::set<position_type> find_adj(position_type pos, std::set<position_type>& adjacent) {
+      adjacent.insert(pos);
+      int x = pos.first;
+      int y = pos.second;
+
+      auto cur = board_[x][y];
+
+      position_type up(x, y+1);
+      position_type right(x+1, y);
+      position_type down(x, y-1);
+      position_type left(x-1, y);
+
+      if (!adjacent.count(up) && up.second < width && board_[up.first][up.second] == cur) {
+        find_adj(up, adjacent);
+      } 
+
+      if (!adjacent.count(right) && right.first < width && board_[right.first][right.second] == cur) {
+        find_adj(right, adjacent);
+      }
+
+      if (!adjacent.count(down) && down.second >= 0 && board_[down.first][down.second] == cur) {
+        find_adj(down, adjacent);
+      }
+
+      if (!adjacent.count(left) && left.first >= 0 && board_[left.first][left.second] == cur) {
+        find_adj(left, adjacent);
+      } 
+
+      return adjacent;
+    }
+
+
     std::vector<position_type> get_possible_moves() {
       moves_and_connected_.clear();
       move_to_adj_map adj = {};
-      for (int x = 0; x < 15; x++) {
-        for (int y = 0; y < 15; y++) {
-          short tile = board_[x][y];
-          if (tile == 0) {
-            break;
-          }
-          position_type cur({x, y});
-
-          if (y + 1 < 15 && board_[x][y+1] == tile) {
-            if (!adj.count(cur)) {
-              adj[cur] = {};
-            }
-            adj[cur].push_back(std::make_pair(x, y+1));
-          }
-          if (x + 1 < 15 && board_[x+1][y] == tile) {
-            if (!adj.count(cur)) {
-              adj[cur] = {};
-            }
-            adj[cur].push_back(std::make_pair(x+1, y));
-          }
-        }
-      }
-      std::vector<position_type> moves;
       std::set<position_type> covered;
+      std::vector<position_type> moves;
+      for (int x = 0; x < width; x++) {
+        for (int y = 0; y < width; y++) {
+          short tile = board_[x][y];
+          position_type cur(x, y);
+          if (covered.count(cur)) {
+            continue;
+          } 
 
-      for (auto it = adj.begin(); it != adj.end(); ++it) {
-        position_type pos = it->first;
-        if (!covered.count(pos)) {
-          moves.push_back(pos);
-          std::set<position_type> connected = aggregate(pos, adj);
-          covered.insert(pos);
-          covered.insert(connected.begin(), connected.end());
-          std::copy(connected.begin(), connected.end(), 
-            std::back_inserter(moves_and_connected_[pos]));
+          std::set<position_type> adjacent;
+          find_adj(cur, adjacent);
+
+          if (adjacent.size() > 1) {
+            if (!moves_and_connected_.count(cur)) {
+              moves_and_connected_[cur] = {};
+            }
+            moves.push_back(cur);
+            covered.insert(adjacent.begin(), adjacent.end());
+            adjacent.erase(adjacent.find(std::make_pair(x,y)));
+            std::vector<position_type> connected;
+            std::copy(connected.begin(), connected.end(), 
+              std::back_inserter(moves_and_connected_[cur]));
+          }
         }
       }
 
@@ -148,7 +172,7 @@ class same_game_env {
     }
 
     void collapse() {
-      for (int x = 0; x < 15; x++) {
+      for (int x = 0; x < width; x++) {
         std::vector<short>& col = board_[x];
         for (auto it = col.begin(); it != col.end();) {
           if (*it == 0) {
@@ -157,7 +181,7 @@ class same_game_env {
             ++it;
           }
         }
-        int num_to_fill = 15 - col.size();
+        int num_to_fill = width - col.size();
         col.insert(col.end(), num_to_fill, 0);
       }
 
@@ -172,8 +196,8 @@ class same_game_env {
         }
       }
       
-      int num_to_fill = 15 - board_.size();
-      std::vector<short> to_fill(15, 0);
+      int num_to_fill = width - board_.size();
+      std::vector<short> to_fill(width, 0);
       board_.insert(board_.end(), num_to_fill, to_fill);
     }
 
