@@ -143,11 +143,15 @@ class MCTS {
     node_type root_;
     node_type* cur_;
     std::size_t num_nodes_;
+    int high_score_;
+    std::vector<position_type> seq_;
+    std::vector<position_type> high_score_seq_;
   public:
     MCTS(Env env) 
       : root_(node<Env>{std::make_pair(-1, -1), env, nullptr}),
         cur_(&root_),
-        num_nodes_(0)
+        num_nodes_(0),
+        high_score_(0)
     {
       srand(time(NULL)); 
     }
@@ -225,7 +229,13 @@ class MCTS {
         position_type pos = moves[rand_move_idx];
         env.step(pos);
       }
-      return env.get_total_reward();
+      double reward = env.get_total_reward();
+      if (reward > high_score_) {
+        high_score_ = reward;
+        high_score_seq_ = env.get_seq(); 
+      }
+
+      return reward;
     }
 
     void backprop(node_type* cur, double q) {
@@ -237,7 +247,35 @@ class MCTS {
       }
     }
 
-    double search(int iterations) {
+    std::vector<position_type> search(int iterations) {
+      while (!cur_->is_terminal()) {
+        cur_->get_env().render();
+        for (int i = 0; i < iterations; i++) {
+          if (i > 0 && i % 1000 == 0) {
+              std::cout << "i: " << i << " num_nodes: " << num_nodes_ << std::endl;
+          }
+          node_type* leaf = tree_policy(cur_);
+          double reward = default_policy(leaf);
+          backprop(leaf, reward);
+        }
+
+        std::size_t num_nodes_created = num_nodes_;
+        if (cur_->has_children()) {
+          cur_ = best_child(cur_);
+          seq_.push_back(cur_->get_action());
+          std::cout << "move made: (" << cur_->get_action().first 
+            << ", " << cur_->get_action().second << ")" << std::endl;
+        }
+      }
+      cur_->get_env().render();
+      if (cur_->is_terminal() && cur_->get_reward() > high_score_) {
+        return seq_;
+      } else {
+        return high_score_seq_;
+      }
+    }
+
+    double search_clear(int iterations) {
       std::size_t num_iterations = 1e4;
 
       while (!cur_->is_terminal()) {
@@ -261,11 +299,10 @@ class MCTS {
       return cur_->get_reward();
     }
 
-    double search_aio(int iterations) {
-      std::size_t num_iterations = 1e6;
+    std::vector<position_type> search_aio(int iterations) {
       cur_->get_env().render();
 
-      for (std::size_t i = 0; i < num_iterations; i++) {
+      for (std::size_t i = 0; i < iterations; i++) {
         if (i > 0 && i % 1000 == 0) {
             std::cout << "i: " << i << " num_nodes: " << num_nodes_ << std::endl;
           }
@@ -274,13 +311,15 @@ class MCTS {
           backprop(leaf, reward);
       }
 
-      while (!cur_->is_terminal()) {
+      while (cur_->has_children()) {
         cur_ = best_child(cur_);
-        std::cout << "move made: (" << cur_->get_action().first << ", " 
-          << cur_->get_action().second << ")" << std::endl;
-        cur_->get_env().render();
+        seq_.push_back(cur_->get_action());
       }
 
-      return cur_->get_reward(); 
+      if (cur_->is_terminal() && cur_->get_reward() > high_score_) {
+        return seq_;
+      } else {
+        return high_score_seq_;
+      }
     }
 };

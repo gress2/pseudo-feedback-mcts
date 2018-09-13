@@ -31,6 +31,7 @@ class same_game_env {
     board_type board_;
     move_to_adj_map moves_and_connected_ = {};
     int width = 15;
+    std::vector<position_type> sequence_;
   public:
     same_game_env(int random_seed = 32) {
       std::srand(random_seed);
@@ -45,11 +46,16 @@ class same_game_env {
     
     same_game_env(const same_game_env& other) 
       : board_(other.board_), total_reward_(other.total_reward_),
-        moves_and_connected_(other.moves_and_connected_)
+        moves_and_connected_(other.moves_and_connected_),
+        sequence_(other.sequence_)
     {}
 
     double get_total_reward() const {
       return total_reward_;
+    }
+
+    std::vector<position_type> get_seq() const {
+      return sequence_;
     }
       
     void render() {
@@ -175,7 +181,7 @@ class same_game_env {
     }
 
     short get_most_common_color() {
-      std::array<int, 5> color_ct;
+      std::array<int, 6> color_ct;
       color_ct.fill({});
       for (int x = 0; x < width; x++) {
         for (int y = 0; y < width; y++) {
@@ -239,6 +245,7 @@ class same_game_env {
 
     void step(position_type pos) {
       assert(moves_and_connected_.count(pos));
+      sequence_.push_back(pos);
       const std::vector<position_type>& adj_tiles = moves_and_connected_[pos];
 
       board_[pos.first][pos.second] = 0;
