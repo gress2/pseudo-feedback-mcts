@@ -27,13 +27,14 @@ class node {
     bool moves_found_;
     bool is_terminal_;
     double q_;
+    double ssq_;
     int n_;
     int depth_;
     std::size_t node_id_;
   public:
     node(position_type action, Env env, parent_type parent)
       : action_(action), env_(env), parent_(parent), is_terminal_(false),
-        q_(0), n_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++),
+        q_(0), n_(0), ssq_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++),
         moves_({}), moves_found_(false)
     {}
 
@@ -90,6 +91,14 @@ class node {
 
     void set_n(int value) {
       n_ = value;
+    }
+
+    double get_ssq() const {
+      return ssq_;
+    }
+
+    void set_ssq(double value) {
+      ssq_ = value;
     }
 
     int get_reward() const {
@@ -162,8 +171,13 @@ class MCTS {
       if (n == 0) {
         return std::numeric_limits<double>::infinity(); 
       }
-      return cur->get_q() / n + 
-        .5 * std::sqrt(std::log(cur->get_parent()->get_n()) / n);
+
+      double C = .5;
+      double D = 1e4;
+      double q_bar = cur->get_q() / n;
+
+      return q_bar + C * std::sqrt(std::log(cur->get_parent()->get_n()) / n) +
+        std::sqrt((cur->get_ssq() - (n * q_bar * q_bar) + D)/n);
     }
 
     node_type* best_child(node_type* parent) {
@@ -171,7 +185,12 @@ class MCTS {
       double max_score = -std::numeric_limits<double>::infinity();
       std::vector<node_type*> best;
       for (auto& child : children) {
-        double ucb1 = UCB1(&child);
+        double ucb1 = 0;
+        if (child.get_n() < 10) {
+          ucb1 = std::numeric_limits<double>::infinity();
+        } else {
+          ucb1 = UCB1(&child);
+        }
         if (ucb1 > max_score) {
           max_score = ucb1;
           best.clear();
@@ -199,8 +218,9 @@ class MCTS {
 
     double default_policy(node_type* cur) {
       Env env(cur->get_env());
+      short avoid_color = env.get_most_common_color();
       while (!env.is_game_over()) {
-        std::vector<position_type> moves = env.get_possible_moves();
+        std::vector<position_type> moves = env.get_rollout_moves(avoid_color);
         int rand_move_idx = std::rand() % moves.size();
         position_type pos = moves[rand_move_idx];
         env.step(pos);
@@ -212,38 +232,55 @@ class MCTS {
       while (cur) {
         cur->set_q(cur->get_q() + q);
         cur->set_n(cur->get_n() + 1);
+        cur->set_ssq(cur->get_ssq() + (q * q));
         cur = cur->get_parent();
       }
     }
 
     double search(int iterations) {
-      std::size_t num_iterations = 1e2;
+      std::size_t num_iterations = 1e4;
+
       while (!cur_->is_terminal()) {
-        std::chrono::time_point<std::chrono::steady_clock> start = 
-          std::chrono::steady_clock::now();
-
         cur_->get_env().render();
-
         for (std::size_t i = 0; i < num_iterations; i++) {
+          if (i > 0 && i % 1000 == 0) {
+              std::cout << "i: " << i << " num_nodes: " << num_nodes_ << std::endl;
+          }
           node_type* leaf = tree_policy(cur_);
           double reward = default_policy(leaf);
           backprop(leaf, reward);
         }
-                
-        std::size_t num_nodes_created = num_nodes_;
 
+        std::size_t num_nodes_created = num_nodes_;
         if (cur_->has_children()) {
           make_move(best_child(cur_));
-          std::cout << "move made: (" << cur_->get_action().first << ", " 
-            << cur_->get_action().second << ")" << std::endl;
+          std::cout << "move made: (" << cur_->get_action().first 
+            << ", " << cur_->get_action().second << ")" << std::endl;
         }
-
-        std::chrono::time_point<std::chrono::steady_clock> end = 
-          std::chrono::steady_clock::now();
-        std::chrono::seconds diff = std::chrono::duration_cast<std::chrono::seconds>(end - start);
-        std::cout << "move took: " << diff.count() << "s" << std::endl;
-        std::cout << "created " << num_nodes_created << " nodes in " << num_iterations << " iterations" << std::endl;
       }
       return cur_->get_reward();
+    }
+
+    double search_aio(int iterations) {
+      std::size_t num_iterations = 1e6;
+      cur_->get_env().render();
+
+      for (std::size_t i = 0; i < num_iterations; i++) {
+        if (i > 0 && i % 1000 == 0) {
+            std::cout << "i: " << i << " num_nodes: " << num_nodes_ << std::endl;
+          }
+          node_type* leaf = tree_policy(cur_);
+          double reward = default_policy(leaf);
+          backprop(leaf, reward);
+      }
+
+      while (!cur_->is_terminal()) {
+        cur_ = best_child(cur_);
+        std::cout << "move made: (" << cur_->get_action().first << ", " 
+          << cur_->get_action().second << ")" << std::endl;
+        cur_->get_env().render();
+      }
+
+      return cur_->get_reward(); 
     }
 };

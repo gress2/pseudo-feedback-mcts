@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
@@ -29,7 +30,7 @@ class same_game_env {
     int total_reward_ = 0;
     board_type board_;
     move_to_adj_map moves_and_connected_ = {};
-    int width = 7;
+    int width = 15;
   public:
     same_game_env(int random_seed = 32) {
       std::srand(random_seed);
@@ -146,6 +147,9 @@ class same_game_env {
       for (int x = 0; x < width; x++) {
         for (int y = 0; y < width; y++) {
           short tile = board_[x][y];
+          if (tile == 0) {
+            break;
+          }
           position_type cur(x, y);
           if (covered.count(cur)) {
             continue;
@@ -161,14 +165,46 @@ class same_game_env {
             moves.push_back(cur);
             covered.insert(adjacent.begin(), adjacent.end());
             adjacent.erase(adjacent.find(std::make_pair(x,y)));
-            std::vector<position_type> connected;
-            std::copy(connected.begin(), connected.end(), 
+            std::copy(adjacent.begin(), adjacent.end(), 
               std::back_inserter(moves_and_connected_[cur]));
           }
         }
       }
 
       return moves;
+    }
+
+    short get_most_common_color() {
+      std::array<int, 5> color_ct;
+      color_ct.fill({});
+      for (int x = 0; x < width; x++) {
+        for (int y = 0; y < width; y++) {
+          short tile = board_[x][y];
+          if (tile == 0) {
+            break;
+          }
+          color_ct[tile]++;
+        }
+      }
+      return std::distance(color_ct.begin(), std::max_element(color_ct.begin(), color_ct.end()));
+    }
+
+    std::vector<position_type> get_rollout_moves(short avoid_color = 0) {
+      std::vector<position_type> all_moves = get_possible_moves();
+      std::vector<position_type> try_avoid;
+      for (auto it = all_moves.begin(); it != all_moves.end(); ++it) {
+        int x = it->first;
+        int y = it->second;
+        if (board_[x][y] != avoid_color) {
+          try_avoid.push_back(*it);
+        }      
+      }
+
+      if (try_avoid.empty()) {
+        return all_moves;
+      } else {
+        return try_avoid;
+      }
     }
 
     void collapse() {
@@ -220,7 +256,21 @@ class same_game_env {
         if (is_board_empty()) {
           reward += 1000;
         } else {
-          reward -= 1000;
+          std::array<int, 5> num_left;
+          num_left.fill({});
+          for (int x = 0; x < width; x++) {
+            for (int y = 0; y < width; y++) { 
+              short color = board_[x][y];
+              if (color) {
+                num_left[color]++;
+              }
+            } 
+          }
+          for (auto it = num_left.begin(); it != num_left.end(); ++it) {
+            if (*it > 2) {
+              reward -= std::pow(*it - 2, 2);
+            }
+          }
         }
       }
 
