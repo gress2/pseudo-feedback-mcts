@@ -1,3 +1,5 @@
+default: main sokoban cl
+
 main: main.o
 	g++ -o main main.o
 
@@ -8,7 +10,7 @@ sokoban: sokoban.o
 	g++ -o sokoban sokoban.o
 
 sokoban.o: sokoban.cc sokoban_env.hpp
-	g++ -std=c++17 -Ofast -Wfatal-errors -c sokoban.cc
+	g++ -std=c++17 -g -Wfatal-errors -c sokoban.cc
 
 cl: cl.o
 	g++ -o cl cl.o
