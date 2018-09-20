@@ -1,5 +1,4 @@
 #pragma once
-
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -24,6 +23,7 @@ class same_game_env {
   public:
     using board_type = std::vector<std::vector<short>>;
     using position_type = std::pair<short, short>;
+    using move_type = position_type;
     using move_to_adj_map = std::map<position_type, std::vector<position_type>>;
   private:
     int num_colors_ = 5;
@@ -56,6 +56,14 @@ class same_game_env {
 
     std::vector<position_type> get_seq() const {
       return sequence_;
+    }
+
+    void print_seq() const {
+      std::cout << "seq: ";
+      for (auto it = sequence_.begin(); it != sequence_.end(); ++it) {
+        std::cout << "(" << it->first << "," << it->second << ") ";
+      }
+      std::cout << std::endl;
     }
       
     void render() {
@@ -283,5 +291,29 @@ class same_game_env {
 
       get_possible_moves();
       total_reward_ += reward;
+    }
+
+    static move_type root_state() {
+      return std::make_pair(-1, -1);
+    }
+
+    class rollout_move_getter {
+      private:
+        same_game_env* parent_;
+        short avoid_color_;
+      public:
+        rollout_move_getter(same_game_env* parent) 
+          : parent_(parent),
+            avoid_color_(parent_->get_most_common_color())
+        {
+        }
+
+        std::vector<move_type> get() {
+          return parent_->get_possible_moves();
+        }
+    };
+
+    rollout_move_getter get_rmg() {
+      return rollout_move_getter(this);
     }
 };

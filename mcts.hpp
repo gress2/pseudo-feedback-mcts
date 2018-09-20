@@ -18,12 +18,13 @@ class node {
     using parent_type = node<Env>*;
     using children_type = std::vector<node<Env>>;
     using position_type = typename Env::position_type;
+    using move_type = typename Env::move_type;
   private:
     parent_type parent_;
     children_type children_;
-    position_type action_;
+    move_type action_;
     Env env_;
-    std::vector<position_type> moves_;
+    std::vector<move_type> moves_;
     bool moves_found_;
     bool is_terminal_;
     double q_;
@@ -32,7 +33,7 @@ class node {
     int depth_;
     std::size_t node_id_;
   public:
-    node(position_type action, Env env, parent_type parent)
+    node(move_type action, Env env, parent_type parent)
       : action_(action), env_(env), parent_(parent), is_terminal_(false),
         q_(0), n_(0), ssq_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++),
         moves_({}), moves_found_(false)
@@ -101,7 +102,7 @@ class node {
       ssq_ = value;
     }
 
-    int get_reward() const {
+    int get_reward() {
       return env_.get_total_reward();
     }
 
@@ -121,7 +122,7 @@ class node {
       return is_terminal_;
     }
 
-    position_type get_action() const {
+    move_type get_action() const {
       return action_;
     }
 
@@ -139,19 +140,20 @@ class MCTS {
   public:
     using node_type = node<Env>;
     using position_type = typename Env::position_type;
+    using move_type = typename node<Env>::move_type;
   private:
     node_type root_;
     node_type* cur_;
     std::size_t num_nodes_;
     int high_score_;
-    std::vector<position_type> seq_;
-    std::vector<position_type> high_score_seq_;
+    std::vector<move_type> seq_;
+    std::vector<move_type> high_score_seq_;
   public:
     MCTS(Env env) 
-      : root_(node<Env>{std::make_pair(-1, -1), env, nullptr}),
+      : root_(node<Env>{Env::root_state(), env, nullptr}),
         cur_(&root_),
         num_nodes_(0),
-        high_score_(0)
+        high_score_(-99999)
     {
       srand(time(NULL)); 
     }
@@ -176,12 +178,12 @@ class MCTS {
         return std::numeric_limits<double>::infinity(); 
       }
 
-      double C = .5;
-      double D = 1e4;
+      double C = 1.2;
+      double D = 1e5;
       double q_bar = cur->get_q() / n;
 
-      return q_bar + C * std::sqrt(std::log(cur->get_parent()->get_n()) / n) +
-        std::sqrt((cur->get_ssq() - (n * q_bar * q_bar) + D)/n);
+      return q_bar + C * std::sqrt(std::log(cur->get_parent()->get_n()) / n);
+        //std::sqrt((cur->get_ssq() - (n * q_bar * q_bar) + D)/n);
     }
 
     node_type* best_child(node_type* parent) {
@@ -222,11 +224,13 @@ class MCTS {
 
     double default_policy(node_type* cur) {
       Env env(cur->get_env());
-      short avoid_color = env.get_most_common_color();
+
+      typename Env::rollout_move_getter rmg = env.get_rmg();
+    
       while (!env.is_game_over()) {
-        std::vector<position_type> moves = env.get_rollout_moves(avoid_color);
+        std::vector<move_type> moves = rmg.get();
         int rand_move_idx = std::rand() % moves.size();
-        position_type pos = moves[rand_move_idx];
+        move_type pos = moves[rand_move_idx];
         env.step(pos);
       }
       double reward = env.get_total_reward();
@@ -234,7 +238,6 @@ class MCTS {
         high_score_ = reward;
         high_score_seq_ = env.get_seq(); 
       }
-
       return reward;
     }
 
@@ -247,7 +250,7 @@ class MCTS {
       }
     }
 
-    std::vector<position_type> search(int iterations) {
+    std::vector<move_type> search(int iterations) {
       while (!cur_->is_terminal()) {
         cur_->get_env().render();
         for (int i = 0; i < iterations; i++) {
@@ -299,7 +302,7 @@ class MCTS {
       return cur_->get_reward();
     }
 
-    std::vector<position_type> search_aio(int iterations) {
+    std::vector<move_type> search_aio(int iterations) {
       cur_->get_env().render();
 
       for (std::size_t i = 0; i < iterations; i++) {

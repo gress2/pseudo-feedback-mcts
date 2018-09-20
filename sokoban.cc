@@ -1,35 +1,15 @@
-#include <iostream>
-#include <string>
+#include "mcts.hpp"
 #include "sokoban_env.hpp"
-
-using direction = sokoban_env::direction;
 
 int main() {
   sokoban_env env("skbn_cfgs/1.cfg");
-  env.render();
-
-  std::string input;
-  while (!env.is_game_over()) {
-    auto possible_moves = env.get_possible_moves();
-    std::cout << "possible moves: " << std::endl;
-    for (auto dir : possible_moves) {
-      std::cout << dir << std::endl;
-    }
-    std::cout << "enter move: " << std::endl;
-    std::getline(std::cin, input); 
-
-    if (input == "u") {
-      env.step(direction::up);
-    } else if (input == "r") {
-      env.step(direction::right);
-    } else if (input == "d") {
-      env.step(direction::down);
-    } else if (input == "l") {
-      env.step(direction::left);
-    }
-
+  MCTS<sokoban_env> mcts(env);
+  auto seq = mcts.search_aio(1e6);
+  for (auto& pos : seq) {
+    std::cout << "Move made: " << env.get_dir_str(pos) << std::endl;
+    env.step(pos);
     env.render();
   }
-  std::cout << "game over! reward: " << env.get_total_reward() << std::endl;
-  
+
+  std::cout << "Score: " << env.get_total_reward() << std::endl;
 }

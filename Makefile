@@ -1,22 +1,31 @@
-default: main sokoban cl
+default: same_game sokoban same_game_cl sokoban_cl
 
-main: main.o
-	g++ -o main main.o
+same_game: same_game.o
+	g++ -o same_game same_game.o
 
-main.o: main.cc mcts.hpp same_game_env.hpp
-	g++ -std=c++17 -Ofast -Wfatal-errors -c main.cc
+same_game.o: same_game.cc mcts.hpp same_game_env.hpp
+	g++ -std=c++17 -Ofast -Wfatal-errors -c same_game.cc
 
-sokoban: sokoban.o
-	g++ -o sokoban sokoban.o
+sokoban: sokoban.o sokoban_env.o
+	g++ -o sokoban sokoban.o sokoban_env.o
 
-sokoban.o: sokoban.cc sokoban_env.hpp
+sokoban.o: sokoban.cc mcts.hpp sokoban_env.hpp
 	g++ -std=c++17 -g -Wfatal-errors -c sokoban.cc
 
-cl: cl.o
-	g++ -o cl cl.o
+same_game_cl: same_game_cl.o
+	g++ -o same_game_cl same_game_cl.o
 
-cl.o: cl.cc same_game_env.hpp
-	g++ -std=c++17 -g -Wfatal-errors -c cl.cc
+same_game_cl.o: same_game_cl.cc same_game_env.hpp
+	g++ -std=c++17 -g -Wfatal-errors -c same_game_cl.cc
+
+sokoban_cl: sokoban_cl.o sokoban_env.o
+	g++ -o sokoban_cl sokoban_cl.o sokoban_env.o
+
+sokoban_cl.o: sokoban_cl.cc sokoban_env.hpp
+	g++ -std=c++17 -g -Wfatal-errors -c sokoban_cl.cc
+
+sokoban_env.o: sokoban_env.cc sokoban_env.hpp
+	g++ -std=c++17 -g -Wfatal-errors -c sokoban_env.cc
 
 clean:
 	rm *.o
