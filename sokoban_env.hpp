@@ -26,6 +26,7 @@ class sokoban_env {
     std::vector<move_type> seq_;
     bool is_game_over_ = false;
     static dist_table dist_;
+    static std::set<position_type> reachable_positions_; 
   public:
     sokoban_env(std::string board_file_str) {
       std::ifstream board_file(board_file_str);
@@ -49,6 +50,10 @@ class sokoban_env {
           }
         }
       }
+
+      if (reachable_positions_.empty()) {
+        get_reachable();
+      }
     }
 
     sokoban_env(const sokoban_env& other) 
@@ -62,7 +67,19 @@ class sokoban_env {
     {
     }
 
-    std::string get_dir_str(direction dir) const {
+    std::size_t hash() const {
+      std::stringstream ss;
+      for (int i = 0; i < board_.size(); i++) {
+        for (int j = 0; j < board_[i].size(); j++) {
+          ss << board_[i][j];
+        }
+      }
+
+      std::size_t h = std::hash<std::string>{}(ss.str());
+      return h;
+    }
+
+    static std::string get_dir_str(direction dir) {
       if (dir == direction::null) {
         return "null";
       } else if (dir == direction::up) {
@@ -85,7 +102,7 @@ class sokoban_env {
     } 
 
     int get_total_reward() {
-      return get_reward();;
+      return get_reward();
     }
 
     position_type get_shifted_position(position_type pos, direction dir) {
@@ -138,6 +155,83 @@ class sokoban_env {
       }
     }
 
+    bool is_in_bounds(position_type pos) {
+      return pos.first >= 0 && pos.first < board_.size()
+        && pos.second >= 0 && pos.second < board_[0].size();
+    }
+
+    bool is_not_wall(position_type pos) {
+      return board_[pos.first][pos.second] != '#';
+    }
+
+    void bfs_explore(position_type pos, std::set<position_type>& visited) {
+      if (visited.count(pos)) {
+        return;
+      }
+
+      visited.insert(pos);
+
+      std::vector<direction> dirs = { 
+        direction::up, direction::right, 
+        direction::down, direction::left 
+      };
+
+      for (auto& dir : dirs) {
+        auto one_step = get_shifted_position(pos, dir);
+        auto two_step = get_shifted_position(one_step, dir);
+        if (is_in_bounds(one_step) && is_in_bounds(two_step) &&
+            is_not_wall(one_step) && is_not_wall(two_step)) {
+          bfs_explore(one_step, visited);
+        }
+      }
+    }
+
+    void get_reachable() {
+      for (auto it = goal_positions_.begin(); it != goal_positions_.end(); ++it) {
+        auto goal_pos = *it;
+        std::set<position_type> visited;
+        bfs_explore(goal_pos, visited);
+        reachable_positions_.insert(visited.begin(), visited.end());
+      }
+      for (auto& pos : reachable_positions_) {
+        std::cout << pair_to_str(pos) << std::endl;
+      }
+    }
+
+
+    bool would_not_lock(position_type considered, position_type hypothetical) {
+      auto up = get_shifted_position(considered, direction::up);
+      auto right = get_shifted_position(considered, direction::right);
+      auto down = get_shifted_position(considered, direction::down);
+      auto left = get_shifted_position(considered, direction::left);
+
+      bool up_clear = is_in_bounds(up) && up != hypothetical && is_goal_or_free(board_[up.first][up.second]);
+      bool right_clear = is_in_bounds(right) && right  != hypothetical && is_goal_or_free(board_[right.first][right.second]);
+      bool down_clear = is_in_bounds(down) && down != hypothetical && is_goal_or_free(board_[down.first][down.second]);
+      bool left_clear = is_in_bounds(left) && left != hypothetical && is_goal_or_free(board_[left.first][left.second]);
+
+      return ((up_clear && down_clear) || (left_clear && right_clear));
+    }
+
+    bool will_freeze_deadlock(position_type src, position_type dest) {
+      if (board_[dest.first][dest.second] == '.') {
+        return false;
+      }
+
+      auto up = get_shifted_position(dest, direction::up);
+      auto right = get_shifted_position(dest, direction::right);
+      auto down = get_shifted_position(dest, direction::down);
+      auto left = get_shifted_position(dest, direction::left);
+
+      bool up_clear = up == src || is_goal_or_free(board_[up.first][up.second]) || would_not_lock(up, dest);
+      bool right_clear = right == src || is_goal_or_free(board_[right.first][right.second]) || would_not_lock(right, dest);
+      bool down_clear = down == src || is_goal_or_free(board_[down.first][down.second]) || would_not_lock(down, dest);
+      bool left_clear = left == src || is_goal_or_free(board_[left.first][left.second]) || would_not_lock(left, dest);
+
+      return !((up_clear && down_clear) || (left_clear && right_clear));
+    }
+
+
     std::vector<direction> get_possible_moves() {
       if (is_game_over_) {
         return {};
@@ -155,11 +249,17 @@ class sokoban_env {
       for (auto dir : dirs) {
         if (is_valid_direction(dir)) {
           if (is_block_push(dir)) {
-            moves.push_back(uppercase(dir));
+            auto one_step = get_shifted_position(human_pos_, dir);
+            auto two_step = get_shifted_position(one_step, dir);
+
+            if (reachable_positions_.count(two_step) && 
+                !will_freeze_deadlock(one_step, two_step)) {
+              moves.push_back(uppercase(dir));
+            }
           } else {
             moves.push_back(dir);
           }
-        }
+        } 
       }
 
       return moves;
@@ -205,7 +305,7 @@ class sokoban_env {
 
     bool is_game_over() {
       return get_num_correct_boxes() == box_positions_.size() || 
-          is_any_box_stuck() || num_moves_ > 75;
+          is_any_box_stuck() || num_moves_ > 40;
     }
 
     int get_num_correct_boxes() {
@@ -283,22 +383,13 @@ class sokoban_env {
         };
 
         for (auto& v : neighbors) {
-          int y = v.first;
-          int x = v.second;
-
-          if (y >= 0 && y < board_.size() && x >= 0 && x < board_[0].size()) {
-            char tile = board_[y][x];
-            int cost = 9999;
-            if (tile != '#') {
-              cost = 1;
-            }
-              if (dist[v] > dist[u] + cost) {
-                dist[v] = dist[u] + cost;
-              } 
-            } 
+          if (is_in_bounds(v)) {
+            int cost = is_not_wall(v) ? 1 : 9999;
+            dist[v] = std::min(dist[v], dist[u] + cost);
           }
-          Q.erase(min_elem_it);
         }
+        Q.erase(min_elem_it);
+      }
       int dist_to_dest = dist[dest];
       dist_[src_dest_pair] = dist_to_dest;
       return dist[dest];
@@ -353,7 +444,7 @@ class sokoban_env {
         }
         min_cost = std::min(cost, min_cost);
       }
-      return -min_cost;
+      return -min_cost + 100 * get_num_correct_boxes();
     }
 
     void step(direction dir) {

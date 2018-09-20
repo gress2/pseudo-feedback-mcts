@@ -5,12 +5,14 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <utility>
 #include <vector>
 
 
 static std::size_t node_id = 0;
+static std::set<std::size_t> env_hashes;
 
 template <class Env>
 class node {
@@ -37,7 +39,9 @@ class node {
       : action_(action), env_(env), parent_(parent), is_terminal_(false),
         q_(0), n_(0), ssq_(0), depth_(parent ? parent->depth_ + 1 : 0), node_id_(node_id++),
         moves_({}), moves_found_(false)
-    {}
+    {
+      env_hashes.insert(env.hash()); 
+    }
 
     std::string to_gv() const {
       std::stringstream ss;
@@ -65,13 +69,21 @@ class node {
         }
       }
 
-      auto move = moves_.back();
-      moves_.pop_back();
-      Env env(env_);
-      env.step(move);
-      node<Env> child(move, env, this);
-      children_.push_back(child);
-      return &(children_.back());
+      while (!moves_.empty()) {
+        auto move = moves_.back();
+        moves_.pop_back();
+        Env env(env_);
+        env.step(move);
+        std::size_t env_hash = env.hash();
+        if (!env_hashes.count(env_hash)) {
+          env_hashes.insert(env_hash);
+          node<Env> child(move, env, this);
+          children_.push_back(child);
+          return &(children_.back());
+        } 
+      }
+
+      return nullptr;
     }
 
     Env& get_env() {
@@ -178,12 +190,12 @@ class MCTS {
         return std::numeric_limits<double>::infinity(); 
       }
 
-      double C = 1.2;
+      double C = .5;
       double D = 1e5;
       double q_bar = cur->get_q() / n;
 
-      return q_bar + C * std::sqrt(std::log(cur->get_parent()->get_n()) / n);
-        //std::sqrt((cur->get_ssq() - (n * q_bar * q_bar) + D)/n);
+      return q_bar + C * std::sqrt(std::log(cur->get_parent()->get_n()) / n) 
+        + std::sqrt((cur->get_ssq() - (n * q_bar * q_bar) + D)/n);
     }
 
     node_type* best_child(node_type* parent) {
@@ -229,9 +241,11 @@ class MCTS {
     
       while (!env.is_game_over()) {
         std::vector<move_type> moves = rmg.get();
-        int rand_move_idx = std::rand() % moves.size();
-        move_type pos = moves[rand_move_idx];
-        env.step(pos);
+        if (!moves.empty()) {
+          int rand_move_idx = std::rand() % moves.size();
+          move_type pos = moves[rand_move_idx];
+          env.step(pos);
+        }
       }
       double reward = env.get_total_reward();
       if (reward > high_score_) {

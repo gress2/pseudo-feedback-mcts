@@ -6,6 +6,8 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -49,6 +51,16 @@ class same_game_env {
         moves_and_connected_(other.moves_and_connected_),
         sequence_(other.sequence_)
     {}
+
+    std::size_t hash() const {
+      std::stringstream ss;
+      for (int i = 0; i < board_.size(); i++) {
+        for (int j = 0; j < board_[i].size(); j++) {
+          ss << board_[i][j];
+        }
+      }
+      return std::hash<std::string>{}(ss.str());
+    }
 
     double get_total_reward() const {
       return total_reward_;
