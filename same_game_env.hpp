@@ -30,9 +30,10 @@ class same_game_env {
   private:
     int num_colors_ = 5;
     int total_reward_ = 0;
+    int curr_reward_ = 0;
     board_type board_;
     move_to_adj_map moves_and_connected_ = {};
-    int width = 15;
+    int width = 12;
     std::vector<position_type> sequence_;
   public:
     same_game_env(int random_seed = 32) {
@@ -48,6 +49,7 @@ class same_game_env {
     
     same_game_env(const same_game_env& other) 
       : board_(other.board_), total_reward_(other.total_reward_),
+        curr_reward_(other.curr_reward_), 
         moves_and_connected_(other.moves_and_connected_),
         sequence_(other.sequence_)
     {}
@@ -62,12 +64,20 @@ class same_game_env {
       return std::hash<std::string>{}(ss.str());
     }
 
+    double get_curr_reward() const {
+      return curr_reward_;
+    }
+
     double get_total_reward() const {
       return total_reward_;
     }
 
     std::vector<position_type> get_seq() const {
       return sequence_;
+    }
+
+    int get_num_steps() const {
+      return sequence_.size();
     }
 
     void print_seq() const {
@@ -258,6 +268,7 @@ class same_game_env {
         }
       }
       
+      
       int num_to_fill = width - board_.size();
       std::vector<short> to_fill(width, 0);
       board_.insert(board_.end(), num_to_fill, to_fill);
@@ -302,6 +313,7 @@ class same_game_env {
       }
 
       get_possible_moves();
+      curr_reward_ = reward;
       total_reward_ += reward;
     }
 

@@ -67,6 +67,10 @@ class sokoban_env {
     {
     }
 
+    int get_num_steps() const {
+      return num_moves_;
+    }
+
     std::size_t hash() const {
       std::stringstream ss;
       for (int i = 0; i < board_.size(); i++) {
@@ -101,11 +105,11 @@ class sokoban_env {
       } 
     } 
 
-    int get_total_reward() {
+    int get_total_reward() const {
       return get_reward();
     }
 
-    position_type get_shifted_position(position_type pos, direction dir) {
+    position_type get_shifted_position(position_type pos, direction dir) const {
       if (dir == direction::up || dir == direction::UP) {
         return std::make_pair(pos.first - 1, pos.second);
       } else if (dir == direction::right || dir == direction::RIGHT) {
@@ -117,11 +121,11 @@ class sokoban_env {
       }
     }
 
-    bool is_goal_or_free(char tile) {
+    bool is_goal_or_free(char tile) const {
       return tile == ' ' || tile == '.';
     }
 
-    bool is_valid_direction(direction dir) {
+    bool is_valid_direction(direction dir) const {
       position_type pos = get_shifted_position(human_pos_, dir);
       char tile = board_[pos.first][pos.second];
 
@@ -138,12 +142,12 @@ class sokoban_env {
       return false;
     }
 
-    bool is_block_push(direction dir) {
+    bool is_block_push(direction dir) const {
       position_type pos = get_shifted_position(human_pos_, dir);
       return board_[pos.first][pos.second] == '$';
     }
 
-    direction uppercase(direction dir) {
+    direction uppercase(direction dir) const {
       if (dir == direction::up) {
         return direction::UP;
       } else if (dir == direction::right) {
@@ -155,16 +159,16 @@ class sokoban_env {
       }
     }
 
-    bool is_in_bounds(position_type pos) {
+    bool is_in_bounds(position_type pos) const {
       return pos.first >= 0 && pos.first < board_.size()
         && pos.second >= 0 && pos.second < board_[0].size();
     }
 
-    bool is_not_wall(position_type pos) {
+    bool is_not_wall(position_type pos) const {
       return board_[pos.first][pos.second] != '#';
     }
 
-    void bfs_explore(position_type pos, std::set<position_type>& visited) {
+    void bfs_explore(position_type pos, std::set<position_type>& visited) const {
       if (visited.count(pos)) {
         return;
       }
@@ -199,7 +203,7 @@ class sokoban_env {
     }
 
 
-    bool would_not_lock(position_type considered, position_type hypothetical) {
+    bool would_not_lock(position_type considered, position_type hypothetical) const {
       auto up = get_shifted_position(considered, direction::up);
       auto right = get_shifted_position(considered, direction::right);
       auto down = get_shifted_position(considered, direction::down);
@@ -265,7 +269,7 @@ class sokoban_env {
       return moves;
     }
 
-    bool is_box_stuck(position_type pos) {
+    bool is_box_stuck(position_type pos) const {
       if (std::find(goal_positions_.begin(), goal_positions_.end(), pos) != goal_positions_.end()) {
         return false;
       }
@@ -294,7 +298,7 @@ class sokoban_env {
       return false;
     }
 
-    bool is_any_box_stuck() {
+    bool is_any_box_stuck() const {
       for (auto it = box_positions_.begin(); it != box_positions_.end(); ++it) {
         if (is_box_stuck(*it)) {
           return true;
@@ -303,12 +307,20 @@ class sokoban_env {
       return false;
     }
 
-    bool is_game_over() {
+    double get_curr_reward() const {
+      if (is_game_over()) {
+        return get_total_reward();
+      } else {
+        return 0;
+      }
+    }
+
+    bool is_game_over() const {
       return get_num_correct_boxes() == box_positions_.size() || 
           is_any_box_stuck() || num_moves_ > 40;
     }
 
-    int get_num_correct_boxes() {
+    int get_num_correct_boxes() const {
       int num_correct = 0;
       for (auto it = box_positions_.begin(); it != box_positions_.end(); ++it) {
         if (std::find(goal_positions_.begin(), goal_positions_.end(), *it) != 
@@ -351,7 +363,7 @@ class sokoban_env {
     };
 
 
-    int shortest_distance_path(position_type src, position_type dest) {
+    int shortest_distance_path(position_type src, position_type dest) const {
       std::pair<position_type, position_type> src_dest_pair(src, dest);
       if (dist_.count(src_dest_pair)) {
         return dist_[src_dest_pair];
@@ -407,7 +419,7 @@ class sokoban_env {
       return tmp;
     }
 
-    std::vector<std::vector<std::pair<int, int>>> generate_matches(int n) {
+    std::vector<std::vector<std::pair<int, int>>> generate_matches(int n) const {
       std::vector<int> box_inds;
       for (int i = 0; i < n; i++) {
         box_inds.push_back(i);
@@ -425,7 +437,7 @@ class sokoban_env {
       return matches;
     }
 
-    int get_reward() {
+    int get_reward() const {
       for (auto i = box_positions_.begin(); i != box_positions_.end(); ++i) {
         for (auto j = goal_positions_.begin(); j != goal_positions_.end(); ++j) {
           shortest_distance_path(*i, *j);
