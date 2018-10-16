@@ -22,3 +22,7 @@ with open('nc', 'w') as nc:
 with open('td', 'w') as td:
     for d in terminals:
         td.write(str(d) + '\n')
+
+with open('gr', 'w') as gr:
+    for group in groups:
+        gr.write(str(group[0]) + ';' + str(group[1]) + '\n')
